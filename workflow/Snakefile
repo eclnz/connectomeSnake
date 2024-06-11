@@ -1,0 +1,36 @@
+from pathlib import Path
+
+configfile: "config/config.yaml"
+    
+module diff-processing:
+    snakefile:
+        github("MataiMRI/diff-processing", path = "workflow/Snakefile")
+    config: config
+    
+module diff-processing:
+    snakefile:
+        github("MataiMRI/restingSnake", path = "workflow/Snakefile")
+    config: config
+
+use rule * from diff-processing as diff_processing_snake*
+use rule * from restingSnake as resting_snake* 
+
+rule all:
+    localrule: True
+    default_target: True
+    input:
+        rules.diff_processing_snake_all.input,
+        rules.restingSnake_freesurfer_rename.input,
+        expand(
+            expand(
+                "{{resultsdir}}/first_level_results/sub-{subject}/ses-{session}/"
+                "sub-{subject}_ses-{session}_{entity}_network-{{network}}_{{suffix}}",
+                zip,
+                subject=RUNS.subjects,
+                session=RUNS.sessions,
+                entity=RUNS.entities,
+            ),
+            resultsdir=config["resultsdir"],
+            network=NETWORKS,
+            suffix=["unthresholded_fc.nii.gz", "figure.png"],
+        ),

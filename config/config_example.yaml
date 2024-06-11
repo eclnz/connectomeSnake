@@ -1,0 +1,74 @@
+ethics_prefix: "ETHICS_PREFIX_"  # prefix to dicom folders and .zip files to be selected
+datadir: "DICOM_FOLDER"  # input folders containing folders of dicoms
+resultsdir: "RESULTS_FOLDER"  # results folder for BIDS formatted data
+
+acqparams: "config/acqparams.txt"  # TODO document
+index: "config/index.txt"  # TODO document
+fs_license: "LICENSE.txt"  # replace this placeholder with yout freesurfer licence file
+
+qc_status:
+    skip_mriqc: False  # if True, skip MRIQC reports generation, only make QC status files
+    default: False  # default value for entries in QC status files
+
+# HeuDiConv options
+# modify 'grouping' to modify how to group dicoms (default: by studyUID)
+# if using "custom", make sure to modify the heuristic file accordingly too
+# see https://heudiconv.readthedocs.io/en/latest/heuristics.html#grouping-string-or-grouping-files-dcmfilter-seqinfo
+heudiconv:
+    heuristic: config/heuristic.py
+    threads: 2
+    mem_mb: 4000
+    time_min: 60
+    # grouping: "custom"
+
+# MRIQC options
+# modify cli_args to pass additional arguments to the tool
+# for example, use
+#   cli_args: "-vvv"
+# to increase the verbosity to debugging level
+# see https://mriqc.readthedocs.io/en/stable/running.html#command-line-interface for available arguments
+mriqc:
+    mem_mb: 16000
+    time_min: 120
+    threads: 8
+    cli_args: ""
+
+synb0_disco:
+    threads: 2
+    mem_mb: 50000
+    time_min: 300
+
+hd_bet:
+    extra_args: "-tta 0 -mode fast -device cpu"
+    threads: 1
+    mem_mb: 4000
+    time_min: 20
+
+denoise:
+    threads: 2
+    mem_mb: 2000
+    time_min: 10
+
+ringing_correction:
+    threads: 2
+    mem_mb: 2000
+    time_min: 10
+
+eddy:
+    executable: "eddy_cuda10.2"  # support eddy_cuda10.2 or eddy_cpu
+    extra_args: "--fwhm=0 --flm=quadratic --cnr_maps --repol --mporder=6 --residuals"
+    threads: 2
+    mem_mb: 4000
+    time_min: 60
+    gpu: "P100:1"
+    slurm_extra: "--partition gpu"
+
+eddy_quad:
+    threads: 2
+    mem_mb: 2000
+    time_min: 30
+
+eddy_squad:
+    threads: 2
+    mem_mb: 2000
+    time_min: 30

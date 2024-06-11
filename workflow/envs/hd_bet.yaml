@@ -1,0 +1,7 @@
+channels:
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+    - git+https://github.com/MIC-DKFZ/HD-BET.git@ae160681324d524db3578e4135bf781f8206e146
