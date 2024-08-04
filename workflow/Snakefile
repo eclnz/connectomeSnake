@@ -1,36 +1,226 @@
 from pathlib import Path
 
 configfile: "config/config.yaml"
-    
-module diff-processing:
+
+module tidy_snake:
     snakefile:
-        github("MataiMRI/diff-processing", path = "workflow/Snakefile")
-    config: config
-    
-module diff-processing:
-    snakefile:
-        github("MataiMRI/restingSnake", path = "workflow/Snakefile")
+        github("MataiMRI/tidySnake", path="workflow/Snakefile", tag="v0.7.0")
     config: config
 
-use rule * from diff-processing as diff_processing_snake*
-use rule * from restingSnake as resting_snake* 
+use rule * from tidy_snake as tidy_snake_*
+
+RUNS, TEMPLATES = tidy_snake.list_valid_runs(config['resultsdir'], suffix="_dwi")
+
+CONNECTOME_OUTPUTS = expand(
+    f"{config['resultsdir']}/bids/derivatives/tractography/"
+    "sub-{subject}/ses-{session}/sub-{subject}_ses-{session}_run-001_str_con_mat.csv",
+    subject=RUNS.subjects,
+    session=RUNS.sessions,
+    entity=RUNS.entities
+)
+
+# ASSIGNMENTS_OUTPUS = expand(
+#     f"{config['resultsdir']}/bids/derivatives/connectome"
+#     "/sub-{subject}/ses-{session}/sub-{subject}_ses-{session}_run-001_node_assignments.csv",
+#     zip,
+#     subject=RUNS.subjects,
+#     session=RUNS.sessions,
+#     entity=RUNS.entities,
+# )
 
 rule all:
     localrule: True
     default_target: True
     input:
-        rules.diff_processing_snake_all.input,
-        rules.restingSnake_freesurfer_rename.input,
-        expand(
-            expand(
-                "{{resultsdir}}/first_level_results/sub-{subject}/ses-{session}/"
-                "sub-{subject}_ses-{session}_{entity}_network-{{network}}_{{suffix}}",
-                zip,
-                subject=RUNS.subjects,
-                session=RUNS.sessions,
-                entity=RUNS.entities,
-            ),
-            resultsdir=config["resultsdir"],
-            network=NETWORKS,
-            suffix=["unthresholded_fc.nii.gz", "figure.png"],
-        ),
+        CONNECTOME_OUTPUTS
+        # ASSIGNMENTS_OUTPUTS
+
+# Convert dwi mask image to mrtrix format
+# TODO: Convert NIfTI to MRTRIX
+rule convert_mask:
+    input:
+        mask_image = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_dwi_brain_mask.nii.gz"
+    output:
+        mask_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_dwi_brain_mask.mif"
+    shell:
+        """
+        mrconvert {input.mask_image} {output.mask_mif}
+        """
+
+# Convert corrected dwi image to mrtrix format
+rule convert_dwi:
+    input:
+        dwi_image = "{resultsdir}/bids/derivatives/eddy/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_eddy.nii.gz",
+        bvecs = "{resultsdir}/bids/derivatives/eddy/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_eddy.eddy_rotated_bvecs",
+        bvals = "{resultsdir}/bids/derivatives/eddy/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_eddy.bval"
+    output:
+        dwi_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_dwi.mif"
+    shell:
+        """
+        mrconvert {input.dwi_image} -fslgrad {input.bvecs} {input.bvals} {output.dwi_mif}
+        """
+
+# Estimate response function
+rule response_function:
+    input:
+        dwi_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_dwi.mif",
+        mask_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_dwi_brain_mask.mif"
+    output:
+        wm_txt = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_wm_response.txt",
+        gm_txt = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_gm_response.txt",
+        csf_txt = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_csf_response.txt"
+    shell:
+        """
+        dwi2response dhollander {input.dwi_mif} {output.wm_txt} {output.gm_txt} {output.csf_txt}
+        """
+
+# Estimate Fiber Orientation Distributions (FOD)
+rule estimate_fod:
+    input:
+        dwi_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_dwi.mif",
+        wm_txt = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_wm_response.txt",
+        gm_txt = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_gm_response.txt",
+        csf_txt = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_csf_response.txt",
+        mask_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_dwi_brain_mask.mif"
+    output:
+        wmfod_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_wmfod.mif",
+        gmfod_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_gmfod.mif",
+        csffod_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_csffod.mif"
+    shell:
+        """
+        dwi2fod msmt_csd {input.dwi_mif} {input.wm_txt} {output.wmfod_mif} {input.gm_txt} {output.gmfod_mif} {input.csf_txt} {output.csffod_mif} -mask {input.mask_mif}
+        """
+
+# Intensity normalization of FOD images
+rule normalize_intensity:
+    input:
+        wmfod_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_wmfod.mif",
+        gmfod_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_gmfod.mif",
+        csffod_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_csffod.mif",
+        mask_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_dwi_brain_mask.mif"
+    output:
+        wmfod_norm_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_wmfod_norm.mif",
+        gmfod_norm_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_gmfod_norm.mif",
+        csffod_norm_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_csffod_norm.mif"
+    shell:
+        """
+        mtnormalise -mask {input.mask_mif} {input.wmfod_mif} {output.wmfod_norm_mif} {input.gmfod_mif} {output.gmfod_norm_mif} {input.csffod_mif} {output.csffod_norm_mif}"
+        """
+
+# Perform rigid registration of T1 to DWI
+rule rigid_registration:
+    input:
+        brain_image = "{resultsdir}/bids/derivatives/hd_bet/sub-{subject}/ses-{session}/anat/sub-{subject}_ses-{session}_run-001_T1w_brain.nii.gz",
+        dwi_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_dwi.mif"
+    output:
+        mean_b0_dwi_nii = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_mean_b0_dwi.nii.gz",
+        t1_rig_dwi_mat = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_T1_rig_dwi.mat",
+        t1_rig_dwi_txt = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_T1_rig_dwi.txt"
+    shell:
+        """
+        dwiextract {input.dwi_mif} - -bzero | mrmath - mean {output.mean_b0_dwi_nii} -axis 3
+        flirt -ref {output.mean_b0_dwi_nii} -in {input.brain_image} -omat {output.t1_rig_dwi_mat} -dof 6 -v
+        transformconvert {output.t1_rig_dwi_mat} {input.brain_image} {output.mean_b0_dwi_nii} flirt_import {output.t1_rig_dwi_txt}
+        """
+        
+rule freesurfer_cross_sectional:
+    input:
+        "{resultsdir}/bids/sub-{subject}/ses-{session}"
+    output:
+        directory("{resultsdir}/bids/derivatives/freesurfer/sub-{subject}_ses-{session}_run-001")
+    container:
+        "docker://nipreps/fmriprep:23.1.3"
+    params:
+        license_path=config["freesurfer"]["license_path"],
+    resources:
+        cpus=lambda wildcards, threads: threads,
+        mem_mb=config["freesurfer"]["mem_mb"],
+        runtime=config["freesurfer"]["time_min"]
+    threads: config["freesurfer"]["threads"]
+    shell:
+        "export FS_LICENSE=$(realpath {params.license_path}) && "
+        "recon-all "
+        "-sd {wildcards.resultsdir}/bids/derivatives/freesurfer "
+        "-i {input}/anat/sub-{wildcards.subject}_ses-{wildcards.session}_run-001_T1w.nii.gz "
+        "-subjid sub-{wildcards.subject}_ses-{wildcards.session}_ses-001"
+        "-all "
+        "-3T "
+        "-openmp {threads}"
+
+# Generate 5 tissue type image using hybrid surface technique
+rule generate_5tt:
+    input:
+        fs_dir = "{resultsdir}/bids/derivatives/freesurfer/sub-{subject}_ses-{session}_run-001",
+        t1_rig_dwi_txt= "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_T1_rig_dwi.txt"
+    output:
+        t1_5tt_nocoreg_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/anat/sub-{subject}_ses-{session}_run-001_T1_5tt_nocoreg.mif",
+        t1_5tt_coreg_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/anat/sub-{subject}_ses-{session}_run-001_T1_5tt_coreg.mif",
+        t1_5tt_coreg_visual_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/anat/sub-{subject}_ses-{session}_run-001_T1_5tt_coreg_visual.mif",
+        gmwmseed_coreg_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/anat/sub-{subject}_ses-{session}_run-001_T1_gmwm_coreg.mif"
+    shell:
+        """
+        5ttgen hsvs {input.fs_dir} {output.t1_5tt_nocoreg_mif} -white_stem
+        mrtransform {output.t1_5tt_nocoreg_mif} -linear {input.t1_rig_dwi_txt} {output.t1_5tt_coreg_mif}
+        5tt2vis {output.t1_5tt_coreg_mif} {output.t1_5tt_coreg_visual_mif}
+        5tt2gmwmi {output.t1_5tt_coreg_mif} {output.gmwmseed_coreg_mif}
+        """
+
+# Create streamlines for 10 million tracts
+rule generate_streamlines:
+    input:
+        wmfod_norm_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_wmfod_norm.mif",
+        t1_5tt_coreg_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/anat/sub-{subject}_ses-{session}_run-001_T1_5tt_coreg.mif",
+        gmwmseed_coreg_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/anat/sub-{subject}_ses-{session}_run-001_T1_gmwm_coreg.mif"
+    output:
+        wb_tracks_10m_tck = "{resultsdir}/bids/derivatives/tractography/sub-{subject}/ses-{session}/sub-{subject}_ses-{session}_run-001_WB_tracks_10M.tck"
+    shell:
+        """
+        tckgen -act {input.t1_5tt_coreg_mif} -backtrack -seed_gmwmi {input.gmwmseed_coreg_mif} -select 100000 {input.wmfod_norm_mif} {output.wb_tracks_10m_tck}
+        """
+
+# Determine streamline weights
+rule filter_streamlines:
+    input:
+        wb_tracks_10m_tck = "{resultsdir}/bids/derivatives/tractography/sub-{subject}/ses-{session}/sub-{subject}_ses-{session}_run-001_WB_tracks_10M.tck",
+        wmfod_norm_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_wmfod_norm.mif",
+        t1_5tt_coreg_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/anat/sub-{subject}_ses-{session}_run-001_T1_5tt_coreg.mif"
+    output:
+        wb_tracks_10m_wei = "{resultsdir}/bids/derivatives/tractography/sub-{subject}/ses-{session}/sub-{subject}_ses-{session}_run-001_WB_tracks_10M_wei.txt",
+        prop_const=  "{resultsdir}/bids/derivatives/tractography/sub-{subject}/ses-{session}/sub-{subject}_ses-{session}_run-001_prop.const.txt",
+        tck_100k_tck = "{resultsdir}/bids/derivatives/tractography/sub-{subject}/ses-{session}/sub-{subject}_ses-{session}_run-001_tck_100k.tck",
+        wb_tracks_100k_wei = "{resultsdir}/bids/derivatives/tractography/sub-{subject}/ses-{session}/sub-{subject}_ses-{session}_run-001_WB_tracks_100K_wei.txt"
+    shell:
+        """
+        tcksift2 -act {input.t1_5tt_coreg_mif} {input.wb_tracks_10m_tck} {input.wmfod_norm_mif} {output.wb_tracks_10m_wei} -out_mu {output.prop_const}
+        tckedit {input.wb_tracks_10m_tck} -number 100K {output.tck_100k_tck} -tck_weights_in {output.wb_tracks_10m_wei} -tck_weights_out {output.wb_tracks_100k_wei}
+        """
+
+rule desikan_to_mrtrix:
+    input:
+        aparc_aseg_mgz = "{resultsdir}/bids/derivatives/freesurfer/sub-{subject}_ses-{session}_run-001",
+        MR_FS_default = "config/fs_default.txt",
+        t1_rig_dwi_txt= "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_T1_rig_dwi.txt"
+    output:
+        dk_parcel_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/anat/sub-{subject}_ses-{session}_run-001_dk_parcel.mif",
+        dk_parcel_coreg_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/anat/sub-{subject}_ses-{session}_run-001_dk_parcel_coreg.mif"
+    container:
+        "docker://nipreps/fmriprep:23.1.3"
+    shell:
+        """
+        labelconvert {input.aparc_aseg_mgz}/mri/aparc+aseg.mgz $FREESURFER/FreeSurferColorLUT.txt {input.MR_FS_default} {output.dk_parcel_mif}
+        mrtransform {output.dk_parcel_mif} -linear {input.t1_rig_dwi_txt} -datatype uint32 {output.dk_parcel_coreg_mif}
+        """
+
+# Perform SIFT2 and generate connectome using DK atlas
+rule sift2_dk_connectome:
+    input:
+        wb_tracks_10m_tck = "{resultsdir}/bids/derivatives/tractography/sub-{subject}/ses-{session}/sub-{subject}_ses-{session}_run-001_WB_tracks_10M.tck",
+        wb_tracks_10m_wei = "{resultsdir}/bids/derivatives/tractography/sub-{subject}/ses-{session}/sub-{subject}_ses-{session}_run-001_WB_tracks_10M_wei.txt",
+        dk_parcel_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/anat/sub-{subject}_ses-{session}_run-001_dk_parcel.mif"
+    output:
+        dk_connectome = "{resultsdir}/bids/derivatives/tractography/sub-{subject}/ses-{session}/sub-{subject}_ses-{session}_run-001_str_con_mat.csv",
+        node_assignments = "{resultsdir}/bids/derivatives/tractography/sub-{subject}/ses-{session}/sub-{subject}_ses-{session}_run-001_node_assignments.csv"
+    shell:
+        """
+        tck2connectome {input.wb_tracks_10m_tck} {input.dk_parcel_mif} {output.dk_connectome} -tck_weights {input.wb_tracks_10m_wei} -out_assignment {output.node_assignments} -symmetric
+        """
