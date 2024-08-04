@@ -40,6 +40,7 @@ Once this configuration is finished, you can run `snakemake` to start the workfl
 Use a dry-run to check that installation and configuration is working:
 
 ```
+srun --account=uoa03264 --qos=debug profiles/nesi/snakemake.sl -n
 snakemake -n
 ```
 
@@ -208,7 +209,9 @@ The complete workflow consists of multiple steps depicted in the following graph
 
 ![Workflow graph](rulegraph.png)
 
-*Workflow graph generated with `snakemake --rulegraph | dot -Tpng > rulegraph.png`.*
+You will need to delete or comment out all print statements from your workflow before running
+
+*Workflow graph generated with `srun --account=uoa03264 --qos=debug profiles/nesi/snakemake.sl --rulegraph | dot -Tpng > rulegraph.png`
 
 The role of each step is the following:
 
@@ -222,6 +225,7 @@ When possible, each step is run independently for each run, task and session of 
 View steps within workflow using rulegraph:
 
 ```
+srun --account=uoa03264 --qos=debug profiles/nesi/snakemake.sl --forceall --rulegraph | dot -Tpdf > rulegraph.pdf
 snakemake --forceall --rulegraph | dot -Tpdf > rulegraph.pdf
 ```
 

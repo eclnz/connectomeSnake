@@ -37,7 +37,7 @@ Then, instead of using `snakemake` command directly, we will use the `profiles/n
 First, always do a dry-run and see which files will be (re-)created using:
 
 ```
-srun --account=PROJECTID --qos=debug profiles/nesi/snakemake.sl -n
+srun --account=uoa03264 --qos=debug profiles/nesi/snakemake.sl -n
 ```
 
 *Note: The option `--qos=debug` gives a higher priority but can only be used for short-running jobs (max 15 minutes). It's ideal for dry-runs.*
