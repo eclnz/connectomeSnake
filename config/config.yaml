@@ -16,6 +16,7 @@ resources:
   gpu: 0
   mem_mb: 4000
   runtime: 120
+  time: 60
         
 # HeuDiConv options
 # modify 'grouping' to modify how to group dicoms (default: by studyUID)
@@ -85,3 +86,20 @@ freesurfer:
     mem_mb: 4000
     time_min: 660
     threads: 8
+    
+mrtrix:
+    mem_mb: 4000
+    time_min: 20
+    threads: 8
+    
+flirt:
+    mem_mb: 4000
+    time_min: 20
+    threads: 1
+
+tckgen: 
+    mem_mb: 4000
+    time_min: 60
+    threads: 16
+    
+    

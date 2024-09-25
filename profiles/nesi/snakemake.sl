@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=dti_workflow
+#SBATCH --job-name=connectome_workflow
 #SBATCH --time=02-00:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=4GB
-#SBATCH --output=logs/nesi/%j-%x.out
-#SBATCH --error=logs/nesi/%j-%x.out
+#SBATCH --output=logs/nesi/%j-%x-output.out
+#SBATCH --error=logs/nesi/%j-%x-error.out
 #SBATCH --dependency=singleton
 
 # exit on errors, undefined variables and errors in pipes

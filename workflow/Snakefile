@@ -15,8 +15,7 @@ CONNECTOME_OUTPUTS = expand(
     f"{config['resultsdir']}/bids/derivatives/tractography/"
     "sub-{subject}/ses-{session}/sub-{subject}_ses-{session}_run-001_str_con_mat.csv",
     subject=RUNS.subjects,
-    session=RUNS.sessions,
-    entity=RUNS.entities
+    session=RUNS.sessions
 )
 
 # ASSIGNMENTS_OUTPUS = expand(
@@ -42,6 +41,8 @@ rule convert_mask:
         mask_image = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_dwi_brain_mask.nii.gz"
     output:
         mask_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_dwi_brain_mask.mif"
+    container:
+        "docker://mrtrix3/mrtrix3:3.0.4"
     shell:
         """
         mrconvert {input.mask_image} {output.mask_mif}
@@ -55,6 +56,8 @@ rule convert_dwi:
         bvals = "{resultsdir}/bids/derivatives/eddy/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_eddy.bval"
     output:
         dwi_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_dwi.mif"
+    container:
+        "docker://mrtrix3/mrtrix3:3.0.4"
     shell:
         """
         mrconvert {input.dwi_image} -fslgrad {input.bvecs} {input.bvals} {output.dwi_mif}
@@ -69,9 +72,16 @@ rule response_function:
         wm_txt = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_wm_response.txt",
         gm_txt = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_gm_response.txt",
         csf_txt = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_csf_response.txt"
+    container:
+        "docker://mrtrix3/mrtrix3:3.0.4"
+    threads: config["mrtrix"]["threads"]
+    resources:
+        cpus=lambda wildcards, threads: threads,
+        mem_mb=config["mrtrix"]["mem_mb"],
+        runtime=config["mrtrix"]["time_min"]
     shell:
         """
-        dwi2response dhollander {input.dwi_mif} {output.wm_txt} {output.gm_txt} {output.csf_txt}
+        dwi2response dhollander {input.dwi_mif} {output.wm_txt} {output.gm_txt} {output.csf_txt} -nthreads {threads}
         """
 
 # Estimate Fiber Orientation Distributions (FOD)
@@ -86,9 +96,16 @@ rule estimate_fod:
         wmfod_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_wmfod.mif",
         gmfod_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_gmfod.mif",
         csffod_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_csffod.mif"
+    container:
+        "docker://mrtrix3/mrtrix3:3.0.4"
+    threads: config["mrtrix"]["threads"]
+    resources:
+        cpus=lambda wildcards, threads: threads,
+        mem_mb=config["mrtrix"]["mem_mb"],
+        runtime=config["mrtrix"]["time_min"]
     shell:
         """
-        dwi2fod msmt_csd {input.dwi_mif} {input.wm_txt} {output.wmfod_mif} {input.gm_txt} {output.gmfod_mif} {input.csf_txt} {output.csffod_mif} -mask {input.mask_mif}
+        dwi2fod msmt_csd {input.dwi_mif} {input.wm_txt} {output.wmfod_mif} {input.gm_txt} {output.gmfod_mif} {input.csf_txt} {output.csffod_mif} -mask {input.mask_mif} -nthreads {threads}
         """
 
 # Intensity normalization of FOD images
@@ -102,9 +119,16 @@ rule normalize_intensity:
         wmfod_norm_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_wmfod_norm.mif",
         gmfod_norm_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_gmfod_norm.mif",
         csffod_norm_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_csffod_norm.mif"
+    container:
+        "docker://mrtrix3/mrtrix3:3.0.4"
+    threads: config["mrtrix"]["threads"]
+    resources:
+        cpus=lambda wildcards, threads: threads,
+        mem_mb=config["mrtrix"]["mem_mb"],
+        runtime=config["mrtrix"]["time_min"]
     shell:
         """
-        mtnormalise -mask {input.mask_mif} {input.wmfod_mif} {output.wmfod_norm_mif} {input.gmfod_mif} {output.gmfod_norm_mif} {input.csffod_mif} {output.csffod_norm_mif}"
+        mtnormalise -nthreads {threads} -mask {input.mask_mif} {input.wmfod_mif} {output.wmfod_norm_mif} {input.gmfod_mif} {output.gmfod_norm_mif} {input.csffod_mif} {output.csffod_norm_mif} 
         """
 
 # Perform rigid registration of T1 to DWI
@@ -116,6 +140,13 @@ rule rigid_registration:
         mean_b0_dwi_nii = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_mean_b0_dwi.nii.gz",
         t1_rig_dwi_mat = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_T1_rig_dwi.mat",
         t1_rig_dwi_txt = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_T1_rig_dwi.txt"
+    container:
+        "docker://mrtrix3/mrtrix3:3.0.4"
+    threads: config['flirt']["threads"]  
+    resources:
+        cpus=lambda wildcards, threads: threads,
+        mem_mb=config["flirt"]["mem_mb"],
+        runtime=config["flirt"]["time_min"]
     shell:
         """
         dwiextract {input.dwi_mif} - -bzero | mrmath - mean {output.mean_b0_dwi_nii} -axis 3
@@ -138,14 +169,10 @@ rule freesurfer_cross_sectional:
         runtime=config["freesurfer"]["time_min"]
     threads: config["freesurfer"]["threads"]
     shell:
-        "export FS_LICENSE=$(realpath {params.license_path}) && "
-        "recon-all "
-        "-sd {wildcards.resultsdir}/bids/derivatives/freesurfer "
-        "-i {input}/anat/sub-{wildcards.subject}_ses-{wildcards.session}_run-001_T1w.nii.gz "
-        "-subjid sub-{wildcards.subject}_ses-{wildcards.session}_ses-001"
-        "-all "
-        "-3T "
-        "-openmp {threads}"
+        """
+        export FS_LICENSE=$(realpath {params.license_path})
+        recon-all -sd {wildcards.resultsdir}/bids/derivatives/freesurfer -i {input}/anat/sub-{wildcards.subject}_ses-{wildcards.session}_run-001_T1w.nii.gz -subjid sub-{wildcards.subject}_ses-{wildcards.session}_ses-001 -all -openmp {threads} 
+        """
 
 # Generate 5 tissue type image using hybrid surface technique
 rule generate_5tt:
@@ -157,6 +184,11 @@ rule generate_5tt:
         t1_5tt_coreg_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/anat/sub-{subject}_ses-{session}_run-001_T1_5tt_coreg.mif",
         t1_5tt_coreg_visual_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/anat/sub-{subject}_ses-{session}_run-001_T1_5tt_coreg_visual.mif",
         gmwmseed_coreg_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/anat/sub-{subject}_ses-{session}_run-001_T1_gmwm_coreg.mif"
+    threads: config["mrtrix"]["threads"]
+    resources:
+        cpus=lambda wildcards, threads: threads,
+        mem_mb=config["mrtrix"]["mem_mb"],
+        runtime=config["mrtrix"]["time_min"]
     shell:
         """
         5ttgen hsvs {input.fs_dir} {output.t1_5tt_nocoreg_mif} -white_stem
