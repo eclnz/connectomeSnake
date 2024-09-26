@@ -41,7 +41,7 @@
 
 35    Left-Cerebellum-Cortex
 
-36    Left-Thalamus-Proper
+36    Left-Thalamus
 37    Left-Caudate
 38    Left-Putamen
 39    Left-Pallidum
@@ -49,7 +49,7 @@
 41    Left-Amygdala
 42    Left-Accumbens-area
 
-43    Right-Thalamus-Proper
+43    Right-Thalamus
 44    Right-Caudate
 45    Right-Putamen
 46    Right-Pallidum

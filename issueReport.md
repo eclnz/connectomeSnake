@@ -18,4 +18,50 @@ mtnormalise: [ERROR] Non-positive tissue balance factor was computed. Balance fa
 
 Will continue to monitor
 
-## 2 
+## 2. Error in freesurder_cross_sectional
+
+### WHO: ALL
+
+### WHAT:
+uoa03264/ecla535/connectomeSnake/logs/nesi/50388240-freesurfer_cross_sectional.out
+recon_all: [ERROR]: You are trying to re-run an existing subject with (possibly)
+ new input data (-i). If this is truly new input data, you should delete
+ the subject folder and re-run, or specify a different subject name.
+ If you are just continuing an analysis of an existing subject, then 
+ omit all -i flags.
+[Wed Sep 25 14:48:25 2024]
+
+### WHY
+1. [160, 161] 
+output:
+        directory("{resultsdir}/bids/derivatives/freesurfer/sub-{subject}_ ses-{session}")
+                                                                            ↑
+                                                                            Session 2 times
+### Fix
+Changed the string and it ran through the freesurfer subjects overnight. This allowed it to progress to 5ttgen.
+
+## 3. Error in generate_5tt
+
+### WHO: ALL
+
+### WHAT: 
+uoa03264/ecla535/connectomeSnake/logs/nesi/50417220-generate_5tt.out
+/usr/bin/bash: line 1: 5ttgen: command not found
+
+### WHY: 
+5ttgen doesn't have the mrtrix docker so the shell cannot find the function.
+
+## 4. error in desikan_to_mrtrix
+labelconvert: scanning DICOM folder "/nesi/noba...rfer/sub-gil1_ses-a_run-001"... ......done
+labelconvert: [ERROR] no DICOM images found in "/nesi/nobackup/uoa03264/ecla535/dti_pipeline_data/processed/bids/derivatives/freesurfer/sub-gil1_ses-a_run-001"
+**WHY** A folder is provided to snakemake, but the A folder was provided to the function instead of an image.
+Needs to be like this {input.FS_dir}/mri/aparc+aseg.mgz not {input.aparc_aseg_mgz} which is just a folder. Specifying a folder causes it to scan for dicoms.
+
+## 5. error in sift2_df_connectome
+tck2connectome: [WARNING] The following nodes are missing from the parcellation image:
+tck2connectome: [WARNING] 36, 43
+tck2connectome: [WARNING] (This may indicate poor parcellation image preparation, use of incorrect or incomplete LUT file(s) in labelconvert, or very poor registration)
+
+The fs_default.txt had the incorrect left and right thalamus (36, 43) entries:
+Left Thalamus Proper -> Left Thalamus
+Right Thalamus Proper -> Right Thalamus

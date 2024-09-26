@@ -171,7 +171,7 @@ rule freesurfer_cross_sectional:
     shell:
         """
         export FS_LICENSE=$(realpath {params.license_path})
-        recon-all -sd {wildcards.resultsdir}/bids/derivatives/freesurfer -i {input}/anat/sub-{wildcards.subject}_ses-{wildcards.session}_run-001_T1w.nii.gz -subjid sub-{wildcards.subject}_ses-{wildcards.session}_ses-001 -all -openmp {threads} 
+        recon-all -sd {wildcards.resultsdir}/bids/derivatives/freesurfer -i {input}/anat/sub-{wildcards.subject}_ses-{wildcards.session}_run-001_T1w.nii.gz -subjid sub-{wildcards.subject}_ses-{wildcards.session}_run-001 -all -openmp {threads} 
         """
 
 # Generate 5 tissue type image using hybrid surface technique
@@ -185,6 +185,8 @@ rule generate_5tt:
         t1_5tt_coreg_visual_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/anat/sub-{subject}_ses-{session}_run-001_T1_5tt_coreg_visual.mif",
         gmwmseed_coreg_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/anat/sub-{subject}_ses-{session}_run-001_T1_gmwm_coreg.mif"
     threads: config["mrtrix"]["threads"]
+    container:
+        "docker://mrtrix3/mrtrix3:3.0.4"
     resources:
         cpus=lambda wildcards, threads: threads,
         mem_mb=config["mrtrix"]["mem_mb"],
@@ -205,6 +207,12 @@ rule generate_streamlines:
         gmwmseed_coreg_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/anat/sub-{subject}_ses-{session}_run-001_T1_gmwm_coreg.mif"
     output:
         wb_tracks_10m_tck = "{resultsdir}/bids/derivatives/tractography/sub-{subject}/ses-{session}/sub-{subject}_ses-{session}_run-001_WB_tracks_10M.tck"
+    container:
+        "docker://mrtrix3/mrtrix3:3.0.4"
+    resources:
+        cpus=lambda wildcards, threads: threads,
+        mem_mb=config["tckgen"]["mem_mb"],
+        runtime=config["tckgen"]["time_min"]
     shell:
         """
         tckgen -act {input.t1_5tt_coreg_mif} -backtrack -seed_gmwmi {input.gmwmseed_coreg_mif} -select 100000 {input.wmfod_norm_mif} {output.wb_tracks_10m_tck}
@@ -221,6 +229,12 @@ rule filter_streamlines:
         prop_const=  "{resultsdir}/bids/derivatives/tractography/sub-{subject}/ses-{session}/sub-{subject}_ses-{session}_run-001_prop.const.txt",
         tck_100k_tck = "{resultsdir}/bids/derivatives/tractography/sub-{subject}/ses-{session}/sub-{subject}_ses-{session}_run-001_tck_100k.tck",
         wb_tracks_100k_wei = "{resultsdir}/bids/derivatives/tractography/sub-{subject}/ses-{session}/sub-{subject}_ses-{session}_run-001_WB_tracks_100K_wei.txt"
+    container:
+        "docker://mrtrix3/mrtrix3:3.0.4"
+    resources:
+        cpus=lambda wildcards, threads: threads,
+        mem_mb=config["tckgen"]["mem_mb"],
+        runtime=config["tckgen"]["time_min"]
     shell:
         """
         tcksift2 -act {input.t1_5tt_coreg_mif} {input.wb_tracks_10m_tck} {input.wmfod_norm_mif} {output.wb_tracks_10m_wei} -out_mu {output.prop_const}
@@ -229,17 +243,24 @@ rule filter_streamlines:
 
 rule desikan_to_mrtrix:
     input:
-        aparc_aseg_mgz = "{resultsdir}/bids/derivatives/freesurfer/sub-{subject}_ses-{session}_run-001",
+        FS_dir = "{resultsdir}/bids/derivatives/freesurfer/sub-{subject}_ses-{session}_run-001",
         MR_FS_default = "config/fs_default.txt",
         t1_rig_dwi_txt= "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_T1_rig_dwi.txt"
     output:
         dk_parcel_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/anat/sub-{subject}_ses-{session}_run-001_dk_parcel.mif",
         dk_parcel_coreg_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/anat/sub-{subject}_ses-{session}_run-001_dk_parcel_coreg.mif"
     container:
-        "docker://nipreps/fmriprep:23.1.3"
+        "docker://mrtrix3/mrtrix3:3.0.4"
+    resources:
+        cpus=lambda wildcards, threads: threads,
+        mem_mb=config["mrtrix"]["mem_mb"],
+        runtime=config["mrtrix"]["time_min"]
+    params:
+        fs_lut_path=config["freesurfer"]["fs_lut"],
+        mr_lut_default=config["freesurfer"]["mr_lut"]
     shell:
         """
-        labelconvert {input.aparc_aseg_mgz}/mri/aparc+aseg.mgz $FREESURFER/FreeSurferColorLUT.txt {input.MR_FS_default} {output.dk_parcel_mif}
+        labelconvert {input.FS_dir}/mri/aparc+aseg.mgz {params.fs_lut_path} {params.mr_lut_default} {output.dk_parcel_mif}
         mrtransform {output.dk_parcel_mif} -linear {input.t1_rig_dwi_txt} -datatype uint32 {output.dk_parcel_coreg_mif}
         """
 
@@ -252,6 +273,12 @@ rule sift2_dk_connectome:
     output:
         dk_connectome = "{resultsdir}/bids/derivatives/tractography/sub-{subject}/ses-{session}/sub-{subject}_ses-{session}_run-001_str_con_mat.csv",
         node_assignments = "{resultsdir}/bids/derivatives/tractography/sub-{subject}/ses-{session}/sub-{subject}_ses-{session}_run-001_node_assignments.csv"
+    container:
+        "docker://mrtrix3/mrtrix3:3.0.4"
+    resources:
+        cpus=lambda wildcards, threads: threads,
+        mem_mb=config["mrtrix"]["mem_mb"],
+        runtime=config["mrtrix"]["time_min"]
     shell:
         """
         tck2connectome {input.wb_tracks_10m_tck} {input.dk_parcel_mif} {output.dk_connectome} -tck_weights {input.wb_tracks_10m_wei} -out_assignment {output.node_assignments} -symmetric

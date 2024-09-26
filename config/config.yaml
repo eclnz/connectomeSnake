@@ -5,6 +5,7 @@ resultsdir: "/nesi/nobackup/uoa03264/ecla535/dti_pipeline_data/processed"
 acqparams: "config/Conc/acqparams.txt"
 index: "config/Conc/index.txt"
 fs_license: "config/Conc/fs_license.txt"
+fs_lut: "config/Conc/FreeSurferColorLUT.txt"
 
 qc_status:
     skip_mriqc: False  # if True, skip MRIQC reports generation, only make QC status files
@@ -82,7 +83,9 @@ eddy_squad:
     time_min: 30
 
 freesurfer:
-    license_path: ./config/license.txt  # you need to specify yours here
+    license_path: ./config/license.txt
+    fs_lut: ./config/FreeSurferColorLUT.txt
+    mr_lut: ./config/fs_default.txt
     mem_mb: 4000
     time_min: 660
     threads: 8
