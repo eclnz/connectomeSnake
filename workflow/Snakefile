@@ -53,7 +53,7 @@ rule convert_dwi:
     input:
         dwi_image = "{resultsdir}/bids/derivatives/eddy/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_eddy.nii.gz",
         bvecs = "{resultsdir}/bids/derivatives/eddy/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_eddy.eddy_rotated_bvecs",
-        bvals = "{resultsdir}/bids/derivatives/eddy/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_eddy.bval"
+        bvals = "{resultsdir}/bids/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_dwi.bval"
     output:
         dwi_mif = "{resultsdir}/bids/derivatives/mrtrix3/sub-{subject}/ses-{session}/dwi/sub-{subject}_ses-{session}_run-001_dwi.mif"
     container:
