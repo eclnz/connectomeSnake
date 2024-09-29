@@ -215,7 +215,7 @@ rule generate_streamlines:
         runtime=config["tckgen"]["time_min"]
     shell:
         """
-        tckgen -act {input.t1_5tt_coreg_mif} -backtrack -seed_gmwmi {input.gmwmseed_coreg_mif} -select 100000 {input.wmfod_norm_mif} {output.wb_tracks_10m_tck}
+        tckgen -act {input.t1_5tt_coreg_mif} -backtrack -seed_gmwmi {input.gmwmseed_coreg_mif} -select 10000000 {input.wmfod_norm_mif} {output.wb_tracks_10m_tck}
         """
 
 # Determine streamline weights
